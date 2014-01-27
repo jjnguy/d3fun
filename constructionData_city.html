@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+		<script src="//code.jquery.com/jquery-1.10.2.min.js"></script>
+		<title>Construction Data 2003-2012</title>
+	</head>
+	<body>
+	<style>
+
+	body {
+		font-family: sans-serif;
+	}
+
+	</style>
+	<select id="graph-type">
+		<option>value</option>
+		<option>count</option>
+	</select>
+	<svg class="chart">
+
+	</svg>
+	<script>
+		function scaleNumberToV(n, min, max, v){
+			var range = max - min;
+			var droppedN = n - min;
+			var newScale = v / range;
+			return newScale * droppedN;
+		}
+	
+		function scaleNumberTo120(n, min, max){
+			var range = max - min;
+			var droppedN = n - min;
+			var newScale = 120 / range;
+			return newScale * droppedN;
+		}
+	
+		// n must be between 0 and 100
+		function getColor(n){
+			// http://stackoverflow.com/questions/340209/generate-colors-between-red-and-green-for-a-power-meter
+			var h = n;
+			var s = 100;
+			var l = 40;
+			return 'hsl(' + h + ',' + s + ',' + l + ')';
+		}
+		
+		function extractTotalProjectValueFromYear(d) {
+			var sum = 0;
+			for(var i = 0; i < d.values.length; i++){
+				sum += +d.values[i].PERMIT_VALUE || 0;
+			}
+			return sum;
+		}
+	
+		var barSpace = 2;
+		var barHeight = 20;
+		var heightPx = barHeight + 'px';
+		var graphType = 'value';
+		
+		function getRelevantValue(d) {
+			if (graphType == 'value') {
+				return d.totalProjectValue;
+			} else {
+				return d.values.length;
+			}
+		}
+		var data = null;
+		var minProjectValue = 100000000000000;
+		var maxProjectValue = 0;
+		var minProjectCount = 100000000000000;
+		var maxProjectCount = 0;
+		
+		var cityKeys = {};
+		
+		function getCorrectScaledValue(d){
+			return scaleNumberToV(getRelevantValue(d), minInRange(), maxInRange() ,800);
+		}
+		
+		function minInRange(){
+			if (graphType == 'count') return minProjectCount;
+			else return minProjectValue;
+		}
+		
+		function maxInRange(){
+			if (graphType == 'count') return maxProjectCount;
+			else return maxProjectValue;
+		}
+		
+		var svg = d3.select("svg").attr('height', '3500px');
+		d3.csv('http://localhost:8000/data-nonresidential_permit.csv', function (arg1, rows){
+			data = d3.nest()
+				.key(function(d){return d.CTU_NAME;})
+				.entries(
+					rows.filter(function(row){
+						return row.NONRES_TYPE_DESC != 'No Projects';
+					})
+				)
+				.filter(function(d){
+					return d.values.length != 1;
+				});
+			
+			for(var i = 0; i < data.length; i++){
+				var current = data[i];
+				var currentLength = current.values.length;
+				current.totalProjectValue = extractTotalProjectValueFromYear(current);
+				
+				if (current.totalProjectValue > maxProjectValue) {
+					maxProjectValue = current.totalProjectValue;
+				}
+				if (current.totalProjectValue < minProjectValue) {
+					minProjectValue = current.totalProjectValue;
+				}
+				
+				if (currentLength > maxProjectCount) {
+					maxProjectCount = currentLength;
+				}
+				if (currentLength < minProjectCount) {
+					minProjectCount = currentLength;
+				}
+				minProjectValue-=25000;
+				minProjectCount-=0;
+				
+				cityKeys[current.key] = i;
+			}
+			
+  			var rects = svg.selectAll("rect")
+    			.data(data)
+				.enter().append("rect")
+    			.attr('width', '0px')
+    			.attr('height', heightPx)
+    			.attr('x', 0)
+    			.attr('y', function(d) {
+    				return (cityKeys[d.key])*(barHeight + barSpace);
+    			})
+    			.style('fill', 'red')
+    			.transition()
+    			.attr('width', function(d) { 
+    				return getCorrectScaledValue(d) + 'px'; 
+    			})
+    			.style('fill', function(d){
+    				return getColor(scaleNumberTo120(getRelevantValue(d), minInRange(), maxInRange()));
+    			});
+    		
+    		var text = svg.selectAll('text')
+    			.data(data)
+    			.enter().append('text')
+    			.text(function(d) { 
+    				return d.key + ' - ' + d.values.length + ' projects - $' + d.totalProjectValue; 
+    			})
+    			.attr('x', 0)
+    			.attr('y', function(d) {return (cityKeys[d.key]+1)*(barHeight + barSpace) - 7;})
+    			.attr('height', heightPx)
+    			.transition()
+    			.attr("x", function(d) { 
+    				return (getCorrectScaledValue(d) + 10) + "px"; 
+    			});
+		});
+		
+		$(function(){
+			$('#graph-type').on('change', function(){
+				graphType = $('#graph-type option:selected').text();
+			
+				var rects = svg.selectAll("rect")
+    			.transition()
+    			.attr('width', function(d) { 
+    				return getCorrectScaledValue(d) + 'px'; 
+    			})
+    			.style('fill', function(d){
+    				return getColor(scaleNumberTo120(getRelevantValue(d), minInRange(), maxInRange()));
+    			});
+    			var text = svg.selectAll('text')
+    			.transition()
+    			.attr("x", function(d) { 
+    				return (getCorrectScaledValue(d) + 10) + "px"; 
+    			});
+			});
+		});
+		
+	</script>
+	</body>
+</html>
